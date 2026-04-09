@@ -12,7 +12,7 @@ import type { SessionLabel } from "@/types";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { user } = useUser();
-  const { gameState, newAchievements, completeSession, dismissAchievements } =
+  const { gameState, newAchievements, saveError, completeSession, dismissAchievements } =
     useGameState(user?.id ?? null);
 
   const handleTimerComplete = useCallback(
@@ -27,6 +27,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <div className="min-h-screen bg-background text-text-primary">
         <Sidebar profile={gameState.profile} />
         <main className="md:ml-64 min-h-screen pb-20 md:pb-0">
+          {saveError && (
+            <div className="mx-4 mt-4 p-3 rounded-xl bg-red-500/15 border border-red-500/30 text-red-400 text-xs font-medium">
+              ⚠️ {saveError}
+            </div>
+          )}
           {children}
         </main>
         <BottomNav />

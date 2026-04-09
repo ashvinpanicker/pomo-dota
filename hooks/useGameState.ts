@@ -31,6 +31,7 @@ export function useGameState(userId: string | null) {
     dotaSessions: [],
   });
   const [loading, setLoading] = useState(true);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [newAchievements, setNewAchievements] = useState<
     (typeof ACHIEVEMENTS)[number][]
   >([]);
@@ -99,6 +100,8 @@ export function useGameState(userId: string | null) {
         (gameState.profile?.current_streak ?? 0) > 0 ? STREAK_BONUS_XP : 0;
       const xpEarned = XP_PER_POMODORO + streakBonus;
 
+      setSaveError(null);
+
       // Insert session
       const { error: sessionError } = await supabase.from("sessions").insert({
         id: sessionId,
@@ -114,6 +117,7 @@ export function useGameState(userId: string | null) {
 
       if (sessionError) {
         console.error("Session insert error:", sessionError);
+        setSaveError(`Failed to save session: ${sessionError.message}. Have you run the database schema in Supabase?`);
         return;
       }
 
@@ -159,8 +163,26 @@ export function useGameState(userId: string | null) {
         updated_at: now,
       };
 
-      // Update profile in DB
-      await supabase.from("profiles").upsert(updatedProfile);
+      // Update profile in DB — only send columns that exist in the schema
+      const { error: profileError } = await supabase.from("profiles").upsert({
+        id: updatedProfile.id,
+        username: updatedProfile.username,
+        avatar_url: updatedProfile.avatar_url,
+        total_xp: updatedProfile.total_xp,
+        level: updatedProfile.level,
+        current_streak: updatedProfile.current_streak,
+        longest_streak: updatedProfile.longest_streak,
+        last_active_date: updatedProfile.last_active_date,
+        pomodoros_completed: updatedProfile.pomodoros_completed,
+        dota_games_earned: updatedProfile.dota_games_earned,
+        dota_games_played: updatedProfile.dota_games_played ?? 0,
+        updated_at: updatedProfile.updated_at,
+      });
+
+      if (profileError) {
+        console.error("Profile update error:", profileError);
+        setSaveError(`Failed to update profile: ${profileError.message}`);
+      }
 
       // Check achievements
       const earnedKeys = gameState.achievements.map((a) => a.achievement_key);
@@ -212,6 +234,7 @@ export function useGameState(userId: string | null) {
   return {
     gameState,
     loading,
+    saveError,
     newAchievements,
     completeSession,
     redeemGame,
