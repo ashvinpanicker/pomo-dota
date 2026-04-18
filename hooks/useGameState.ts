@@ -99,6 +99,20 @@ export function useGameState(userId: string | null) {
     fetchAll();
   }, [fetchAll]);
 
+  // Realtime: re-fetch whenever sessions change (another device start/pause/cancel/complete)
+  useEffect(() => {
+    if (!userId) return;
+    const channel = supabase
+      .channel(`sessions-sync:${userId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "sessions", filter: `user_id=eq.${userId}` },
+        () => { fetchAll(); }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [userId, supabase, fetchAll]);
+
   const completeSession = useCallback(
     async (sessionId: string, label: SessionLabel, durationMinutes: number, notes: string = "") => {
       if (!userId) return;
@@ -146,6 +160,7 @@ export function useGameState(userId: string | null) {
         started_at: startedAt,
         completed_at: now,
         xp_earned: xpEarned,
+        paused_remaining_seconds: null,
         created_at: now,
       };
       updatedSessions.unshift(newSession);
@@ -241,6 +256,35 @@ export function useGameState(userId: string | null) {
     [userId, supabase]
   );
 
+  const pauseSession = useCallback(
+    async (sessionId: string, remainingSeconds: number) => {
+      if (!userId) return;
+      await supabase
+        .from("sessions")
+        .update({ paused_remaining_seconds: remainingSeconds })
+        .eq("id", sessionId)
+        .eq("user_id", userId)
+        .eq("completed", false);
+    },
+    [userId, supabase]
+  );
+
+  const resumeSession = useCallback(
+    async (sessionId: string, newStartedAt: Date) => {
+      if (!userId) return;
+      await supabase
+        .from("sessions")
+        .update({
+          paused_remaining_seconds: null,
+          started_at: newStartedAt.toISOString(),
+        })
+        .eq("id", sessionId)
+        .eq("user_id", userId)
+        .eq("completed", false);
+    },
+    [userId, supabase]
+  );
+
   const cancelSession = useCallback(
     async (sessionId: string) => {
       if (!userId) return;
@@ -278,6 +322,8 @@ export function useGameState(userId: string | null) {
     saveError,
     newAchievements,
     startSession,
+    pauseSession,
+    resumeSession,
     cancelSession,
     completeSession,
     redeemGame,

@@ -62,10 +62,14 @@ export interface ActiveSession {
   durationMinutes: number;
   label: SessionLabel;
   notes: string;
+  isPaused: boolean;
+  pausedRemainingSeconds: number | null;
 }
 
 interface UseTimerOptions {
   onStart?: (sessionId: string, label: SessionLabel, duration: number, notes: string) => void;
+  onPause?: (sessionId: string, remainingSeconds: number) => void;
+  onResume?: (sessionId: string, newStartedAt: Date) => void;
   onComplete?: (sessionId: string, label: SessionLabel, duration: number, notes: string) => void;
   onCancel?: (sessionId: string) => void;
   /** Restore an in-progress session from DB (cross-device sync) */
@@ -74,16 +78,20 @@ interface UseTimerOptions {
   gameStateLoading?: boolean;
 }
 
-export function useTimer({ onStart, onComplete, onCancel, activeSession, gameStateLoading }: UseTimerOptions = {}) {
+export function useTimer({ onStart, onPause, onResume, onComplete, onCancel, activeSession, gameStateLoading }: UseTimerOptions = {}) {
   const [state, setState] = useState<TimerState>(DEFAULT_STATE);
   const stateRef = useRef(state);
   stateRef.current = state;
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const initializedRef = useRef(false);
   const onStartRef = useRef(onStart);
+  const onPauseRef = useRef(onPause);
+  const onResumeRef = useRef(onResume);
   const onCompleteRef = useRef(onComplete);
   const onCancelRef = useRef(onCancel);
   onStartRef.current = onStart;
+  onPauseRef.current = onPause;
+  onResumeRef.current = onResume;
   onCompleteRef.current = onComplete;
   onCancelRef.current = onCancel;
 
@@ -111,7 +119,20 @@ export function useTimer({ onStart, onComplete, onCancel, activeSession, gameSta
     initializedRef.current = true;
 
     if (activeSession) {
-      // Restore timer from Supabase (cross-device sync)
+      if (activeSession.isPaused && activeSession.pausedRemainingSeconds !== null) {
+        // Restore paused timer
+        setState({
+          status: "paused",
+          durationMinutes: activeSession.durationMinutes,
+          remainingSeconds: activeSession.pausedRemainingSeconds,
+          label: activeSession.label,
+          notes: activeSession.notes,
+          startedAt: activeSession.startedAt,
+          sessionId: activeSession.sessionId,
+        });
+        return;
+      }
+      // Restore running timer — calculate remaining from wall clock
       const elapsed = Math.floor((Date.now() - activeSession.startedAt.getTime()) / 1000);
       const remaining = Math.max(0, activeSession.durationMinutes * 60 - elapsed);
       if (remaining > 0) {
@@ -126,7 +147,7 @@ export function useTimer({ onStart, onComplete, onCancel, activeSession, gameSta
         });
         return;
       }
-      // Session existed but elapsed — treat as idle, clean up localStorage
+      // Session elapsed while away — clean up
       try { localStorage.removeItem(STORAGE_KEY); } catch {}
     } else {
       // No DB session — fall back to localStorage (same device, page refresh)
@@ -141,6 +162,61 @@ export function useTimer({ onStart, onComplete, onCancel, activeSession, gameSta
     if (!initializedRef.current) return;
     saveTimerState(state);
   }, [state]);
+
+  // Post-init: sync timer whenever activeSession changes (Realtime push from other device)
+  const prevActiveSessionRef = useRef<ActiveSession | null | undefined>(undefined);
+  useEffect(() => {
+    if (!initializedRef.current) return; // init effect handles the first sync
+    if (prevActiveSessionRef.current === undefined) {
+      // First time this runs after init — just record current value, don't re-sync
+      prevActiveSessionRef.current = activeSession ?? null;
+      return;
+    }
+    const prev = prevActiveSessionRef.current;
+    prevActiveSessionRef.current = activeSession ?? null;
+
+    const cur = stateRef.current;
+
+    if (!activeSession) {
+      // Session was deleted on another device (cancel or complete)
+      if (cur.status === "running" || cur.status === "paused") {
+        setState({ ...DEFAULT_STATE, durationMinutes: cur.durationMinutes, label: cur.label });
+      }
+      return;
+    }
+
+    const sessionChanged = activeSession.sessionId !== prev?.sessionId;
+    const pauseChanged   = activeSession.isPaused !== (cur.status === "paused");
+
+    if (!sessionChanged && !pauseChanged) return; // nothing meaningful changed
+
+    if (activeSession.isPaused && activeSession.pausedRemainingSeconds !== null) {
+      setState((s) => ({
+        ...s,
+        status: "paused",
+        remainingSeconds: activeSession.pausedRemainingSeconds!,
+        sessionId: activeSession.sessionId,
+        label: activeSession.label,
+        notes: activeSession.notes,
+        durationMinutes: activeSession.durationMinutes,
+        startedAt: activeSession.startedAt,
+      }));
+    } else {
+      const elapsed    = Math.floor((Date.now() - activeSession.startedAt.getTime()) / 1000);
+      const remaining  = Math.max(0, activeSession.durationMinutes * 60 - elapsed);
+      if (remaining > 0) {
+        setState({
+          status: "running",
+          durationMinutes: activeSession.durationMinutes,
+          remainingSeconds: remaining,
+          label: activeSession.label,
+          notes: activeSession.notes,
+          startedAt: activeSession.startedAt,
+          sessionId: activeSession.sessionId,
+        });
+      }
+    }
+  }, [activeSession]);
 
   // Update tab title when timer is active
   useEffect(() => {
@@ -209,19 +285,21 @@ export function useTimer({ onStart, onComplete, onCancel, activeSession, gameSta
   }, []);
 
   const pause = useCallback(() => {
+    const { status, sessionId, remainingSeconds } = stateRef.current;
+    if (status !== "running") return;
+    if (sessionId) onPauseRef.current?.(sessionId, remainingSeconds);
     setState((prev) => (prev.status === "running" ? { ...prev, status: "paused" } : prev));
   }, []);
 
   const resume = useCallback(() => {
+    const { status, sessionId, durationMinutes, remainingSeconds } = stateRef.current;
+    if (status !== "paused") return;
+    // Recalculate startedAt so elapsed-time math is correct after the pause gap
+    const newStartedAt = new Date(Date.now() - (durationMinutes * 60 - remainingSeconds) * 1000);
+    if (sessionId) onResumeRef.current?.(sessionId, newStartedAt);
     setState((prev) => {
       if (prev.status !== "paused") return prev;
-      // Shift startedAt forward so elapsed time excludes the pause duration
-      const elapsed = prev.durationMinutes * 60 - prev.remainingSeconds;
-      return {
-        ...prev,
-        status: "running",
-        startedAt: new Date(Date.now() - elapsed * 1000),
-      };
+      return { ...prev, status: "running", startedAt: newStartedAt };
     });
   }, []);
 

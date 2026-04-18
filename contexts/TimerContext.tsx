@@ -13,12 +13,14 @@ interface TimerProviderProps {
   activeSession?: ActiveSession | null;
   gameStateLoading?: boolean;
   onStart?: (sessionId: string, label: SessionLabel, duration: number, notes: string) => void;
+  onPause?: (sessionId: string, remainingSeconds: number) => void;
+  onResume?: (sessionId: string, newStartedAt: Date) => void;
   onComplete?: (sessionId: string, label: SessionLabel, duration: number, notes: string) => void;
   onCancel?: (sessionId: string) => void;
 }
 
-export function TimerProvider({ children, activeSession, gameStateLoading, onStart, onComplete, onCancel }: TimerProviderProps) {
-  const timer = useTimer({ activeSession, gameStateLoading, onStart, onComplete, onCancel });
+export function TimerProvider({ children, activeSession, gameStateLoading, onStart, onPause, onResume, onComplete, onCancel }: TimerProviderProps) {
+  const timer = useTimer({ activeSession, gameStateLoading, onStart, onPause, onResume, onComplete, onCancel });
   return <TimerContext.Provider value={timer}>{children}</TimerContext.Provider>;
 }
 

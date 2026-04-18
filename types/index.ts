@@ -56,6 +56,7 @@ export interface Session {
   started_at: string;
   completed_at: string | null;
   xp_earned: number;
+  paused_remaining_seconds: number | null;
   created_at: string;
 }
 

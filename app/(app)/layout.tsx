@@ -19,6 +19,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     newAchievements,
     saveError,
     startSession,
+    pauseSession,
+    resumeSession,
     cancelSession,
     completeSession,
     dismissAchievements,
@@ -33,12 +35,15 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const activeSession = useMemo<ActiveSession | null>(() => {
     const s = gameState.activeSession;
     if (!s) return null;
+    const pausedRemaining = s.paused_remaining_seconds ?? null;
     return {
       sessionId: s.id,
       startedAt: new Date(s.started_at),
       durationMinutes: s.duration,
       label: s.label as SessionLabel,
       notes: s.notes ?? "",
+      isPaused: pausedRemaining !== null,
+      pausedRemainingSeconds: pausedRemaining,
     };
   }, [gameState.activeSession]);
 
@@ -56,6 +61,20 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     [completeSession]
   );
 
+  const handlePause = useCallback(
+    (sessionId: string, remainingSeconds: number) => {
+      pauseSession(sessionId, remainingSeconds);
+    },
+    [pauseSession]
+  );
+
+  const handleResume = useCallback(
+    (sessionId: string, newStartedAt: Date) => {
+      resumeSession(sessionId, newStartedAt);
+    },
+    [resumeSession]
+  );
+
   const handleCancel = useCallback(
     (sessionId: string) => {
       cancelSession(sessionId);
@@ -68,6 +87,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       activeSession={activeSession}
       gameStateLoading={timerLoading}
       onStart={handleStart}
+      onPause={handlePause}
+      onResume={handleResume}
       onComplete={handleComplete}
       onCancel={handleCancel}
     >

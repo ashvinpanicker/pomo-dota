@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS public.sessions (
 );
 
 ALTER TABLE public.sessions ADD COLUMN IF NOT EXISTS notes TEXT;
+ALTER TABLE public.sessions ADD COLUMN IF NOT EXISTS paused_remaining_seconds INTEGER;
 
 CREATE INDEX IF NOT EXISTS sessions_user_id_idx           ON public.sessions(user_id);
 CREATE INDEX IF NOT EXISTS sessions_started_at_idx        ON public.sessions(started_at DESC);
