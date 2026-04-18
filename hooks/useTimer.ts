@@ -126,16 +126,19 @@ export function useTimer({ onStart, onComplete, onCancel, activeSession, gameSta
         });
         return;
       }
-      // Session completed while the user was away — nothing to restore
+      // Session existed but elapsed — treat as idle, clean up localStorage
+      try { localStorage.removeItem(STORAGE_KEY); } catch {}
+    } else {
+      // No DB session — fall back to localStorage (same device, page refresh)
+      const loaded = loadTimerState();
+      setState(loaded);
     }
-
-    // Fall back to localStorage (same device, e.g. page refresh)
-    const loaded = loadTimerState();
-    setState(loaded);
   }, [gameStateLoading, activeSession]);
 
-  // Persist state changes
+  // Persist state changes — only after initialization so we don't overwrite
+  // the saved localStorage state with DEFAULT_STATE on first render
   useEffect(() => {
+    if (!initializedRef.current) return;
     saveTimerState(state);
   }, [state]);
 
