@@ -9,7 +9,6 @@ interface LabelSelectorProps {
   value: SessionLabel;
   onChange: (label: SessionLabel) => void;
   disabled?: boolean;
-  disabled?: boolean;
 }
 
 export function LabelSelector({ value, onChange, disabled }: LabelSelectorProps) {
