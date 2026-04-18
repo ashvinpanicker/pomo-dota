@@ -15,6 +15,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { user } = useUser();
   const {
     gameState,
+    loading: gameStateLoading,
     newAchievements,
     saveError,
     startSession,
@@ -60,6 +61,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <TimerProvider
       activeSession={activeSession}
+      gameStateLoading={gameStateLoading}
       onStart={handleStart}
       onComplete={handleComplete}
       onCancel={handleCancel}

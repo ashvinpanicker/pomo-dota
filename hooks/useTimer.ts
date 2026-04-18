@@ -70,11 +70,14 @@ interface UseTimerOptions {
   onCancel?: (sessionId: string) => void;
   /** Restore an in-progress session from DB (cross-device sync) */
   activeSession?: ActiveSession | null;
+  /** Whether game state is still being fetched — defer init until false */
+  gameStateLoading?: boolean;
 }
 
-export function useTimer({ onStart, onComplete, onCancel, activeSession }: UseTimerOptions = {}) {
+export function useTimer({ onStart, onComplete, onCancel, activeSession, gameStateLoading }: UseTimerOptions = {}) {
   const [state, setState] = useState<TimerState>(DEFAULT_STATE);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const initializedRef = useRef(false);
   const onStartRef = useRef(onStart);
   const onCompleteRef = useRef(onComplete);
   const onCancelRef = useRef(onCancel);
@@ -98,10 +101,15 @@ export function useTimer({ onStart, onComplete, onCancel, activeSession }: UseTi
     };
   }, []);
 
-  // Load persisted state on mount — DB active session wins over localStorage
+  // Wait for game state to load, then initialize once — DB wins over localStorage
   useEffect(() => {
+    if (initializedRef.current) return; // already initialized
+    if (gameStateLoading) return;        // still fetching from DB, wait
+
+    initializedRef.current = true;
+
     if (activeSession) {
-      // Restore from Supabase (cross-device)
+      // Restore timer from Supabase (cross-device sync)
       const elapsed = Math.floor((Date.now() - activeSession.startedAt.getTime()) / 1000);
       const remaining = Math.max(0, activeSession.durationMinutes * 60 - elapsed);
       if (remaining > 0) {
@@ -116,11 +124,13 @@ export function useTimer({ onStart, onComplete, onCancel, activeSession }: UseTi
         });
         return;
       }
+      // Session completed while the user was away — nothing to restore
     }
+
+    // Fall back to localStorage (same device, e.g. page refresh)
     const loaded = loadTimerState();
     setState(loaded);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [gameStateLoading, activeSession]);
 
   // Persist state changes
   useEffect(() => {

@@ -11,13 +11,14 @@ const TimerContext = createContext<TimerContextValue | null>(null);
 interface TimerProviderProps {
   children: ReactNode;
   activeSession?: ActiveSession | null;
+  gameStateLoading?: boolean;
   onStart?: (sessionId: string, label: SessionLabel, duration: number, notes: string) => void;
   onComplete?: (sessionId: string, label: SessionLabel, duration: number, notes: string) => void;
   onCancel?: (sessionId: string) => void;
 }
 
-export function TimerProvider({ children, activeSession, onStart, onComplete, onCancel }: TimerProviderProps) {
-  const timer = useTimer({ activeSession, onStart, onComplete, onCancel });
+export function TimerProvider({ children, activeSession, gameStateLoading, onStart, onComplete, onCancel }: TimerProviderProps) {
+  const timer = useTimer({ activeSession, gameStateLoading, onStart, onComplete, onCancel });
   return <TimerContext.Provider value={timer}>{children}</TimerContext.Provider>;
 }
 
